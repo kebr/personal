@@ -1,1 +1,1 @@
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/user/repo/main/script.sh)"
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/kebr/personal/main/pi2.com/scripts/build.sh)"
