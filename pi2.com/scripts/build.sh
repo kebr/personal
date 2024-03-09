@@ -145,5 +145,4 @@ runuser -l apache -- -c '/usr/sbin/apachectl start'
 # Final message
 echo -e "\n========== Apache should be available on\n$(hostname -I | awk '{print $1}'):1092\n=========="
 
-
 } | tee -a logs_mount/"log_mount_${timestamp}.log"
