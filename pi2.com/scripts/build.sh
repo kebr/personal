@@ -1,5 +1,12 @@
 #!/bin/bash
 
+export PATH=$PATH:/usr/sbin
+
+if [ "$(whoami)" != "root" ]; then
+    echo "===== Run me as root"
+    exit 1
+fi
+
 # Vars
 timestamp="$(date "+%Y_%m_%d-%H_%M_%S")"
 mkdir -p logs_mount
@@ -26,8 +33,8 @@ function message(){
 
 # Install packages
 message 0 "Running apt-get update/upgrade"
-sudo apt-get update -y
-sudo apt-get upgrade -y
+apt-get update -y
+apt-get upgrade -y
 
 
 packages="apache2 open-vm-tools net-tools wget curl vim imagemagick bash sudo gzip zip unzip"
