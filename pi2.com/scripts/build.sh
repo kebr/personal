@@ -14,13 +14,31 @@ mkdir -p logs_mount
 {
 # Functions
 function checkMount(){
-    if [ -d /mnt/hgfs/shared ]; then
+    if [ -d /mnt/hgfs/shared/cgi ]; then
         # Mount is present
         return 0
     else
         return 1
     fi
 }
+
+if checkMount; then
+    message 0 "Mount found"
+else
+    message 2 "Mount check failed, running mount fix script"
+    cp /etc/fstab "/etc/fstab.${timestamp}.bak"
+    echo -e "\n# VMWare Mount Fix\nvmhgfs-fuse /mnt/hgfs  fuse defaults,auto,allow_other,_netdev   0   0\n" >> /etc/fstab
+    message 0 "Reloading daemon"
+    systemctl daemon-reload
+    message 0 "Running mount -a"
+    mount -a
+    if checkMount; then
+    message 0 "Mount fixed"
+    else
+        message 1 "Unable to fix mount, see above errors"
+        exit 1
+    fi
+fi
 
 function message(){
     case $1 in
@@ -39,9 +57,10 @@ apt-get upgrade -y
 
 packages="apache2 open-vm-tools net-tools wget curl vim imagemagick bash sudo gzip zip unzip"
 
+# shellcheck disable=SC2068
 for install_package in ${packages[@]}; do
     message 0 "Installing $install_package"
-    apt-get install -qq -y $install_package
+    apt-get install -qq -y "$install_package"
 done
 
 # Force stopping apache
@@ -55,25 +74,10 @@ usermod -g users apache
 chown -R apache:users /home/apache
 chmod 700 /home/apache
 
-if checkMount; then
-    message 0 "Mount found"
-else
-    message 2 "Mount check failed, running mount fix script"
-    cp /etc/fstab /etc/fstab.${timestamp}.bak
-    echo -e "\n# VMWare Mount Fix\nvmhgfs-fuse /mnt/hgfs  fuse defaults,auto,allow_other,_netdev   0   0\n" >> /etc/fstab
-    message 0 "Reloading daemon"
-    systemctl daemon-reload
-    message 0 "Running mount -a"
-    mount -a
-    if checkMount; then
-    message 0 "Mount fixed"
-    else
-        message 1 "Unable to fix mount, see above errors"
-        exit 1
-    fi
-fi
+
 
 # Get latest dir for cgi
+# shellcheck disable=SC2012
 latest_cgi=$(ls -t /mnt/hgfs/shared/cgi | head -1)
 if [ -z "$latest_cgi" ]; then
 message 1 "latest_cgi is empty"
@@ -91,23 +95,24 @@ systemctl disable apache2
 # Unzip targets
 unzip_targets=(apps web)
 
+# shellcheck disable=SC2068
 for unzip_target_entry in ${unzip_targets[@]}; do
-    if [ -d /${unzip_target_entry}.bak ]; then
+    if [ -d "/${unzip_target_entry}.bak" ]; then
         message 2 "Removing old backup for ${unzip_target_entry}"
-        if ! rm -rf /${unzip_target_entry}.bak; then
+        if ! rm -rf "/${unzip_target_entry}.bak"; then
             echo "Failed to remove '/${unzip_target_entry}.bak'"
         fi
     fi
-    if [ -d /${unzip_target_entry} ]; then
+    if [ -d "/${unzip_target_entry}" ]; then
         message 0 "/${unzip_target_entry} already exists, moving it to /${unzip_target_entry}.bak"
-        if ! mv -f /${unzip_target_entry} /${unzip_target_entry}.bak; then
+        if ! mv -f "/${unzip_target_entry}" "/${unzip_target_entry}.bak"; then
             message 2 "Failed to move /${unzip_target_entry} to /${unzip_target_entry}.bak!"
         fi
     fi
 
-    if [ -f /mnt/hgfs/shared/cgi/$latest_cgi/${unzip_target_entry}.zip ]; then
+    if [ -f "/mnt/hgfs/shared/cgi/$latest_cgi/${unzip_target_entry}.zip" ]; then
         message 0 "Unzipping ${unzip_target_entry}"
-        unzip -o -d / /mnt/hgfs/shared/cgi/$latest_cgi/${unzip_target_entry}.zip 1>/dev/null
+        unzip -o -d / "/mnt/hgfs/shared/cgi/$latest_cgi/${unzip_target_entry}.zip" 1>/dev/null
         else
         message 2 "No '/mnt/hgfs/shared/cgi/$latest_cgi/${unzip_target_entry}.zip' found!"
     fi
@@ -125,9 +130,9 @@ if [ -d /etc/apache2 ]; then
     fi
 fi
 
-if [ -f /mnt/hgfs/shared/cgi/$latest_cgi/etcapache.zip ]; then
+if [ -f "/mnt/hgfs/shared/cgi/$latest_cgi/etcapache.zip" ]; then
     message 0 "Unzipping etcapache"
-    unzip -o -d / /mnt/hgfs/shared/cgi/$latest_cgi/etcapache.zip 1>/dev/null
+    unzip -o -d / "/mnt/hgfs/shared/cgi/$latest_cgi/etcapache.zip" 1>/dev/null
 else
     message 2 "No '/mnt/hgfs/shared/cgi/$latest_cgi/${unzip_target_entry}.zip' found!"
 fi
