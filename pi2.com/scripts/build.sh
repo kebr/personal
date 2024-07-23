@@ -1,160 +1,67 @@
 #!/bin/bash
 
-export PATH=$PATH:/usr/sbin
+datetime=$(date +%Y_%m_%d_%H_%M_%S)
 
-if [ "$(whoami)" != "root" ]; then
-    echo "===== Run me as root"
-    exit 1
-fi
+log_file="local_build_${datetime}.log"
+# Export all output to log_file
+exec > >(tee -a "$log_file") 2>&1
 
-# Vars
-timestamp="$(date "+%Y_%m_%d-%H_%M_%S")"
-mkdir -p logs_mount
 
-{
-# Functions
-function checkMount(){
-    if [ -d /mnt/hgfs/shared/cgi ]; then
-        # Mount is present
-        return 0
-    else
-        return 1
-    fi
-}
+function message() {
+    type=$1
+    string=$2
 
-if checkMount; then
-    message 0 "Mount found"
-else
-    message 2 "Mount check failed, running mount fix script"
-    cp /etc/fstab "/etc/fstab.${timestamp}.bak"
-    echo -e "\n# VMWare Mount Fix\nvmhgfs-fuse /mnt/hgfs  fuse defaults,auto,allow_other,_netdev   0   0\n" >> /etc/fstab
-    message 0 "Reloading daemon"
-    systemctl daemon-reload
-    message 0 "Running mount -a"
-    mount -a
-    if checkMount; then
-    message 0 "Mount fixed"
-    else
-        message 1 "Unable to fix mount, see above errors"
+    case $type in
+        1)
+        # Info
+        echo "[INFO] $string"
+        ;;
+        2)
+        # Warning
+        echo "[WARN] $string"
+        ;;
+        3)
+        # Error
+        echo "[ERROR] $string"
         exit 1
-    fi
-fi
-
-function message(){
-    case $1 in
-    0) echo "[INFO] $2";;
-    1) echo "[ERROR] $2";;
-    2) echo "[WARNING] $2";;
-    *) echo "[BAD-USAGE] $1 | $2"
+        ;;
     esac
 }
 
-# Install packages
-message 0 "Running apt-get update/upgrade"
-apt-get update -y
-apt-get upgrade -y
+## Create local requirements for hosting pi2.com content
+## Steps
+# Install required packages
+# Check if pi2.com is reachable
+# Test ssh connection to apache on pi2.com
+# Check /expansion/backups/daily/$day exists
+# 
 
+## Run update and upgrades without prompt
+apt update && apt upgrade -y
 
-packages="apache2 open-vm-tools net-tools wget curl vim imagemagick bash sudo gzip zip unzip"
+## Install required packages without prompt if they don't exist, update if they do
+packages=(bash wget curl net-tools inotify-tools apache2 zip unzip gzip imagemagick)
 
-# shellcheck disable=SC2068
-for install_package in ${packages[@]}; do
-    message 0 "Installing $install_package"
-    apt-get install -qq -y "$install_package"
+for package in "${packages[@]}"; do
+        apt install -y "$package"
 done
 
-# Force stopping apache
-/usr/sbin/apachectl stop &>/dev/null
-runuser -l apache -- -c '/usr/sbin/apachectl start'  &>/dev/null
+## Run ps1 prep script
+#powershell.exe -File test.ps1
 
-# Configure apache
-mkdir -p /home/apache
-useradd apache
-usermod -g users apache
-chown -R apache:users /home/apache
-chmod 700 /home/apache
-
-
-
-# Get latest dir for cgi
-# shellcheck disable=SC2012
-latest_cgi=$(ls -t /mnt/hgfs/shared/cgi | head -1)
-if [ -z "$latest_cgi" ]; then
-message 1 "latest_cgi is empty"
-exit 1
-fi
-
-
-
-# Apache changes
-message 0 "Stopping apache2"
-systemctl stop apache2
-message 0 "Disabling autostart for apache2"
-systemctl disable apache2
-
-# Unzip targets
-unzip_targets=(apps web)
-
-# shellcheck disable=SC2068
-for unzip_target_entry in ${unzip_targets[@]}; do
-    if [ -d "/${unzip_target_entry}.bak" ]; then
-        message 2 "Removing old backup for ${unzip_target_entry}"
-        if ! rm -rf "/${unzip_target_entry}.bak"; then
-            echo "Failed to remove '/${unzip_target_entry}.bak'"
-        fi
-    fi
-    if [ -d "/${unzip_target_entry}" ]; then
-        message 0 "/${unzip_target_entry} already exists, moving it to /${unzip_target_entry}.bak"
-        if ! mv -f "/${unzip_target_entry}" "/${unzip_target_entry}.bak"; then
-            message 2 "Failed to move /${unzip_target_entry} to /${unzip_target_entry}.bak!"
-        fi
+## Check if pi2.com resolves to 192.168.0.40
+if [[ $(getent hosts pi2.com | awk '{print $1}') == "192.168.0.40" ]]; then
+    message 1 "pi2.com resolves to 192.168.0.40 - using rsync mode"
+    # Test ssh connection to apache on pi2.com
+    if ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null pi2.com 'exit 0'; then
+        message 1"SSH connection to pi2.com successful"
+    else
+        message 3 "SSH connection to pi2.com failed"
     fi
 
-    if [ -f "/mnt/hgfs/shared/cgi/$latest_cgi/${unzip_target_entry}.zip" ]; then
-        message 0 "Unzipping ${unzip_target_entry}"
-        unzip -o -d / "/mnt/hgfs/shared/cgi/$latest_cgi/${unzip_target_entry}.zip" 1>/dev/null
-        else
-        message 2 "No '/mnt/hgfs/shared/cgi/$latest_cgi/${unzip_target_entry}.zip' found!"
-    fi
-done
+    # Rsync pi2.com content - /apps /logs and /web - keep owner and timestamps on files/folders
+    rsync -av --chown=: --preserve=mode,timestamps --include='/apps' --include='/logs' --include='/web' --include='*/' --exclude='*' apache@pi2.com:/ /    
 
-# etc apache
-if [ -d /etc/apache2 ]; then
-    message 0 "/etc/apache2 already exists, moving it to /etc/apache2.bak"
-    if [ -d /etc/apache2.bak ]; then
-    message 2 "/etc/apache2.bak already exists, removing it"
-    rm -rf /etc/apache2.bak
-    fi
-    if ! mv -f /etc/apache2 /etc/apache2.bak; then
-        message 2 "Failed to move /etc/apache2 to /etc/apache2.bak!"
-    fi
-fi
-
-if [ -f "/mnt/hgfs/shared/cgi/$latest_cgi/etcapache.zip" ]; then
-    message 0 "Unzipping etcapache"
-    unzip -o -d / "/mnt/hgfs/shared/cgi/$latest_cgi/etcapache.zip" 1>/dev/null
 else
-    message 2 "No '/mnt/hgfs/shared/cgi/$latest_cgi/${unzip_target_entry}.zip' found!"
+    message 2 "pi2.com does not resolve to 192.168.0.40 - using copy mode"
 fi
-
-# Fix for cgi
-if [ -d /usr/lib/cgi-bin ]; then
-    message 0 "cgi-bin lib exists, replacing it and creating symlink"
-    mv /usr/lib/cgi-bin /usr/lib/cgi-bin.old 
-fi
-ln -s /apps/html/cgi /usr/lib/cgi-bin
-
-# Ownership fixes
-message 0 "Ownership fixes"
-mkdir -p /logs/html/gallery
-chown -R apache:users /apps /logs /web /etc/apache2
-
-# Start apache
-message 0 "Starting apache as user apache"
-runuser -l apache -- -c '/usr/sbin/apachectl start'
-
-
-# Final message
-echo -e "\n========== Apache should be available on\n$(hostname -I | awk '{print $1}'):1092\n=========="
-
-} | tee -a logs_mount/"log_mount_${timestamp}.log"
