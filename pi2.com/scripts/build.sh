@@ -37,15 +37,15 @@ function message() {
 # 
 
 ## Run update and upgrades without prompt
-message 1 "Running apt update and upgrade"
-apt update && apt upgrade -y
+message 1 "Running apt-get  update and upgrade"
+apt-get update && apt-get upgrade -y
 
 ## Install required packages without prompt if they don't exist, update if they do
 packages=(bash wget curl net-tools inotify-tools apache2 zip unzip gzip imagemagick virt-what) 
 
 for package in "${packages[@]}"; do
         message 1 "Installing $package"
-        apt install -y "$package"
+        apt-get install -y "$package"
 done
 
 # Run virt-what and determine installation type, if hyper-v install linux-azure, if vmware install open-vm-tools
@@ -54,13 +54,13 @@ virt=$(virt-what)
 if [ "$virt" == "vmware" ]; then
         message 1 "This VM is running on VMware"
         message 1 "Installing open-vm-tools"
-        apt install -y open-vm-tools 
+        apt-get install -y open-vm-tools 
         message 1 "Mountpoint is /mnt/hgfs/shared"
         mountpoint=/mnt/hgfs/shared
 elif [ "$virt" == "hyperv" ]; then
         message 1 "This VM is running on Hyper-V"
         message 1 "Installing linux-azure and cifs-utils"
-        apt install -y linux-azure cifs-utils
+        apt-get install -y linux-azure cifs-utils
         message 1 "Mountpoint is /mnt/shared"
         mountpoint=/mnt/shared
 else
@@ -90,7 +90,9 @@ if grep -q "/mnt/shared" /etc/fstab; then
 else
         message 1 "Shared folder not in fstab, adding"
         # Edit fstab to include "#SMB Mount for Expansion \n //192.168.0.4/Expansion /mnt/shared cifs credentials=/etc/smbcredentials,vers=3.0,iocharset=utf8,file_mode=0777,dir_mode=0777 0 0"
-        echo -e "#SMB Mount for Expansion \n //192.168.0.4/Expansion /mnt/shared cifs credentials=/etc/smbcredentials,vers=3.0,iocharset=utf8,file_mode=0777,dir_mode=0777 0 0" | sudo tee -a /etc/fstab > /dev/null
+        echo -e "#SMB Mount for Expansion \n//192.168.0.4/Expansion /mnt/shared cifs credentials=/etc/smbcredentials,vers=3.0,iocharset=utf8,file_mode=0777,dir_mode=0777 0 0" | sudo tee -a /etc/fstab > /dev/null
+        message 1 "Reloading systemd daemon"
+        systemctl daemon-reload
 fi
 
 # Add /etc/smbcredentials
