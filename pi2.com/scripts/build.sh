@@ -37,12 +37,14 @@ function message() {
 # 
 
 ## Run update and upgrades without prompt
+message 1 "Running apt update and upgrade"
 apt update && apt upgrade -y
 
 ## Install required packages without prompt if they don't exist, update if they do
-packages=(bash wget curl net-tools inotify-tools apache2 zip unzip gzip imagemagick cifs-utils virt-what) 
+packages=(bash wget curl net-tools inotify-tools apache2 zip unzip gzip imagemagick virt-what) 
 
 for package in "${packages[@]}"; do
+        message 1 "Installing $package"
         apt install -y "$package"
 done
 
@@ -50,35 +52,39 @@ done
 virt=$(virt-what)
 
 if [ "$virt" == "vmware" ]; then
+        message 1 "This VM is running on VMware"
+        message 1 "Installing open-vm-tools"
         apt install -y open-vm-tools 
+        message 1 "Mountpoint is /mnt/hgfs/shared"
         mountpoint=/mnt/hgfs/shared
 elif [ "$virt" == "hyperv" ]; then
+        message 1 "This VM is running on Hyper-V"
+        message 1 "Installing linux-azure and cifs-utils"
         apt install -y linux-azure cifs-utils
+        message 1 "Mountpoint is /mnt/shared"
         mountpoint=/mnt/shared
 else
         message 3 "Unsupported hypervisor '$virt'"
         exit 1
 fi
 
-# Check if /mnt/hgfs/shared exists
-if [ ! -d "/mnt/hgfs/shared" ]; then
-        message 3 "Shared folder /mnt/hgfs/shared does not exist"
-        exit 1
-fi
-
 # Create the file /usr/bin/root which contains 'sudo bash'
+message 1 "Creating /usr/bin/root"
 echo 'sudo bash' | sudo tee /usr/bin/root > /dev/null
 sudo chmod +x /usr/bin/root
 
 # Create the file /usr/bin/apache which contains 'sudo su - apache'
+message 1 "Creating /usr/bin/apache"
 echo 'sudo su - apache' | sudo tee /usr/bin/apache > /dev/null
 sudo chmod +x /usr/bin/apache
 
 # Create the file /usr/bin/kevin which contains 'sudo su - kevin'
+message 1 "Creating /usr/bin/kevin"
 echo 'su - kevin' | sudo tee /usr/bin/kevin > /dev/null
 sudo chmod +x /usr/bin/kevin
 
 # Check if fstab contains the shared folder
+message 1 "Checking if shared folder is in fstab"
 if grep -q "/mnt/shared" /etc/fstab; then
         message 1 "Shared folder already in fstab"
 else
@@ -98,4 +104,13 @@ else
         message 1 "/etc/smbcredentials already exists"
 fi
 
+# Mount all in fstab
+message 1 "Mounting all in fstab"
+mount -a
+
+# Check if /mnt/hgfs/shared exists
+if [ ! -d "/mnt/hgfs/shared" ]; then
+        message 3 "Shared folder /mnt/hgfs/shared does not exist"
+        exit 1
+fi
 
