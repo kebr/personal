@@ -6,7 +6,6 @@ log_file="local_build_${datetime}.log"
 # Export all output to log_file
 exec > >(tee -a "$log_file") 2>&1
 
-
 function message() {
     type=$1
     string=$2
