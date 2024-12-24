@@ -40,7 +40,7 @@ function message() {
 apt update && apt upgrade -y
 
 ## Install required packages without prompt if they don't exist, update if they do
-packages=(bash wget curl net-tools inotify-tools apache2 zip unzip gzip imagemagick virt-what) 
+packages=(bash wget curl net-tools inotify-tools apache2 zip unzip gzip imagemagick cifs-utils virt-what) 
 
 for package in "${packages[@]}"; do
         apt install -y "$package"
@@ -87,6 +87,15 @@ else
         echo -e "#SMB Mount for Expansion \n //192.168.0.4/Expansion /mnt/shared cifs credentials=/etc/smbcredentials,vers=3.0,iocharset=utf8,file_mode=0777,dir_mode=0777 0 0" | sudo tee -a /etc/fstab > /dev/null
 fi
 
-
+# Add /etc/smbcredentials
+username=Kevin
+password=Daisy12345
+if [ ! -f "/etc/smbcredentials" ]; then
+        message 1 "Creating /etc/smbcredentials"
+        echo -e "username=$username\npassword=$password" | sudo tee /etc/smbcredentials > /dev/null
+        sudo chmod 600 /etc/smbcredentials
+else
+        message 1 "/etc/smbcredentials already exists"
+fi
 
 
