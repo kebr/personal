@@ -40,28 +40,53 @@ function message() {
 apt update && apt upgrade -y
 
 ## Install required packages without prompt if they don't exist, update if they do
-packages=(bash wget curl net-tools inotify-tools apache2 zip unzip gzip imagemagick)
+packages=(bash wget curl net-tools inotify-tools apache2 zip unzip gzip imagemagick virt-what) 
 
 for package in "${packages[@]}"; do
         apt install -y "$package"
 done
 
-## Run ps1 prep script
-#powershell.exe -File test.ps1
+# Run virt-what and determine installation type, if hyper-v install linux-azure, if vmware install open-vm-tools
+virt=$(virt-what)
 
-## Check if pi2.com resolves to 192.168.0.40
-if [[ $(getent hosts pi2.com | awk '{print $1}') == "192.168.0.40" ]]; then
-    message 1 "pi2.com resolves to 192.168.0.40 - using rsync mode"
-    # Test ssh connection to apache on pi2.com
-    if ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null pi2.com 'exit 0'; then
-        message 1"SSH connection to pi2.com successful"
-    else
-        message 3 "SSH connection to pi2.com failed"
-    fi
-
-    # Rsync pi2.com content - /apps /logs and /web - keep owner and timestamps on files/folders
-    rsync -av --chown=: --preserve=mode,timestamps --include='/apps' --include='/logs' --include='/web' --include='*/' --exclude='*' apache@pi2.com:/ /    
-
+if [ "$virt" == "vmware" ]; then
+        apt install -y open-vm-tools 
+        mountpoint=/mnt/hgfs/shared
+elif [ "$virt" == "hyperv" ]; then
+        apt install -y linux-azure cifs-utils
+        mountpoint=/mnt/shared
 else
-    message 2 "pi2.com does not resolve to 192.168.0.40 - using copy mode"
+        message 3 "Unsupported hypervisor '$virt'"
+        exit 1
 fi
+
+# Check if /mnt/hgfs/shared exists
+if [ ! -d "/mnt/hgfs/shared" ]; then
+        message 3 "Shared folder /mnt/hgfs/shared does not exist"
+        exit 1
+fi
+
+# Create the file /usr/bin/root which contains 'sudo bash'
+echo 'sudo bash' | sudo tee /usr/bin/root > /dev/null
+sudo chmod +x /usr/bin/root
+
+# Create the file /usr/bin/apache which contains 'sudo su - apache'
+echo 'sudo su - apache' | sudo tee /usr/bin/apache > /dev/null
+sudo chmod +x /usr/bin/apache
+
+# Create the file /usr/bin/kevin which contains 'sudo su - kevin'
+echo 'su - kevin' | sudo tee /usr/bin/kevin > /dev/null
+sudo chmod +x /usr/bin/kevin
+
+# Check if fstab contains the shared folder
+if grep -q "/mnt/shared" /etc/fstab; then
+        message 1 "Shared folder already in fstab"
+else
+        message 1 "Shared folder not in fstab, adding"
+        # Edit fstab to include "#SMB Mount for Expansion \n //192.168.0.4/Expansion /mnt/shared cifs credentials=/etc/smbcredentials,vers=3.0,iocharset=utf8,file_mode=0777,dir_mode=0777 0 0"
+        echo -e "#SMB Mount for Expansion \n //192.168.0.4/Expansion /mnt/shared cifs credentials=/etc/smbcredentials,vers=3.0,iocharset=utf8,file_mode=0777,dir_mode=0777 0 0" | sudo tee -a /etc/fstab > /dev/null
+fi
+
+
+
+
